@@ -7,5 +7,20 @@
 
     <TextView android:text="@string/hello_world" android:layout_width="wrap_content"
         android:layout_height="wrap_content" />
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Train"
+        android:id="@+id/training"
+        android:layout_alignParentLeft="true"
+        android:gravity="center_vertical"/>
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Test"
+        android:layout_below="@+id/training"
+        android:id="@+id/testing"
+        android:layout_alightParentLeft="true"
+        android:gravity="center_vertical"/>
 
 </RelativeLayout>

@@ -2,7 +2,7 @@
 <resources>
 
     <string name="app_name">Lab2B</string>
-    <string name="hello_world">Hello world!</string>
+    <string name="hello_world">18-551 Group 2</string>
     <string name="action_settings">Settings</string>
 
 </resources>
