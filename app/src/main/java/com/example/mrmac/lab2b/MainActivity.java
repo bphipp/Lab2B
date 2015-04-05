@@ -1,5 +1,6 @@
 package com.example.mrmac.lab2b;
 
+import android.content.Context;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
 import android.view.Menu;
@@ -10,6 +11,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.graphics.Bitmap;
 import android.os.Environment;
+import android.widget.EditText;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
@@ -21,9 +23,13 @@ import org.opencv.core.Mat;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.BufferedOutputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.util.ArrayList;
 
 import org.opencv.core.*;
 import org.opencv.objdetect.CascadeClassifier;
@@ -32,8 +38,11 @@ import org.opencv.objdetect.CascadeClassifier;
 public class MainActivity extends ActionBarActivity implements CvCameraViewListener2{
     private CameraBridgeViewBase mOpenCvCameraView;
     int option = 0;
-    private Mat grayscaleImage;
+    int class_list_index = 0;
+    int faces_needed = 0;
+    private ArrayList<String> classes = new ArrayList(0);
     private int absoluteFaceSize;
+    private File                   mCascadeFile;
     private CascadeClassifier cascadeClassifier;
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -65,7 +74,8 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
     private View.OnClickListener trainbtnlistener = new View.OnClickListener(){
 
         public void onClick(View v){
-            option = 1;
+
+        faces_needed = 16;
 
         }
 
@@ -73,6 +83,7 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
     private View.OnClickListener testbtnlistener = new View.OnClickListener(){
 
         public void onClick(View v){
+
             option = 2;
 
         }
@@ -88,12 +99,17 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
 
         mOpenCvCameraView.setCvCameraViewListener(this);
+        File cascadeDir = getDir("cascade", Context.MODE_PRIVATE);
+        mCascadeFile = new File(cascadeDir, "lbpcascade_frontalface.xml");
+        cascadeClassifier = new CascadeClassifier(mCascadeFile.getAbsolutePath());
+
 
 //        current_frame = new Mat();
 //        option = 0; // 0 -> normal 1 -> blur 2 -> edges
 
         Button trainbtn = (Button)findViewById(R.id.training);
         Button testbtn = (Button)findViewById(R.id.testing);
+        EditText class_name = (EditText)findViewById(R.id.class_name);
 
         trainbtn.setOnClickListener(trainbtnlistener);
         testbtn.setOnClickListener(testbtnlistener);
@@ -114,7 +130,7 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
     }
 
     public void onCameraViewStarted(int width, int height) {
-        grayscaleImage = new Mat(height, width, CvType.CV_8UC4);
+        //grayscaleImage = new Mat(height, width, CvType.CV_8UC4);
 
 
         // The faces will be a 20% of the height of the screen
@@ -123,28 +139,30 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
 
     public void onCameraViewStopped() {
     }
+
     public Mat captureImages(Mat aInputFrame) {
+        //Hardcode 128,128 image size
+        //Pass in path of train images to train and num of images
+        //Pass in path of test images to test and num classes
+        Mat grayscaleImage = null;
         Imgproc.cvtColor(aInputFrame, grayscaleImage, Imgproc.COLOR_RGBA2RGB);
 
-
-        MatOfRect faces = new MatOfRect();
-
+        MatOfRect current_face = new MatOfRect();
 
         // Use the classifier to detect faces
-        if (cascadeClassifier != null) {
-            cascadeClassifier.detectMultiScale(grayscaleImage, faces, 1.1, 2, 2,
-                    new Size(absoluteFaceSize, absoluteFaceSize), new Size());
-        }
-
+        if (!cascadeClassifier.empty())
+            cascadeClassifier.detectMultiScale(grayscaleImage, current_face);
 
         // If there are any faces found, draw a rectangle around it
-        Rect[] facesArray = faces.toArray();
-        for (int i = 0; i <facesArray.length; i++)
+        Rect[] facesArray = current_face.toArray();
+        Mat face = grayscaleImage.submat(facesArray[0]);
+        /*for (int i = 0; i <facesArray.length; i++)
             Core.rectangle(aInputFrame, facesArray[i].tl(), facesArray[i].br(), new Scalar(0, 255, 0, 255), 3);
-
-
-        return aInputFrame;
+        */
+        return face;
     }
+
+
 
     public void saveToFolder(File file, Mat input){
         FileOutputStream out = null;
@@ -164,26 +182,30 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
                 e.printStackTrace();
             }
         }
-
     }
+
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
 
         // Do signal processing here.
         Mat current_frame = inputFrame.rgba();
         Mat current_face;
-        if (option == 1){
+        if (faces_needed > 0){
             for(int i=0; i<8; i++){
                 //this finds the face and returns a face matrix
                 current_face = captureImages(current_frame);
-                //this is kind of weird still
-                File fileName=new File(Environment.DIRECTORY_PICTURES, "name it some shit");
+                String file_name = String.format("class_%i/class%i%i", class_list_index, class_list_index, 8 - faces_needed);
+                File fileName = new File(Environment.DIRECTORY_PICTURES, file_name);
                 saveToFolder(fileName, current_face);
                 //now i want to save things to training folder
             }
-            // 1 -> train
-            org.opencv.core.Size s = new Size(10,10);
-            Imgproc.blur(current_frame, current_frame, s);
+            faces_needed -= 1;
+            if (faces_needed == 0) { // Time to train
+                // 1 -> train
 
+            }
+            //Below is used to blur the image
+            //org.opencv.core.Size s = new Size(10,10);
+            //Imgproc.blur(current_frame, current_frame, s);
         } else if (option == 2){
             for(int i=0; i<4; i++) {
                 current_face=captureImages(current_frame);
@@ -191,6 +213,7 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
                 saveToFolder(fileName, current_face);
             }
 //          want to test
+            //Below does the edge detection
             Imgproc.cvtColor(current_frame,current_frame,Imgproc.COLOR_RGB2GRAY);
             Imgproc.Canny(current_frame,current_frame,100,300);
             Imgproc.cvtColor(current_frame,current_frame,Imgproc.COLOR_GRAY2RGB);
@@ -201,6 +224,7 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
         }
         return current_frame;
     }
+
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
