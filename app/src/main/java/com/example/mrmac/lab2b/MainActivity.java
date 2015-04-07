@@ -1,6 +1,7 @@
 package com.example.mrmac.lab2b;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
 import android.view.Menu;
@@ -30,20 +31,35 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.List;
 
 import org.opencv.core.*;
 import org.opencv.objdetect.CascadeClassifier;
+
+import static org.opencv.core.Core.mean;
+import static org.opencv.core.Core.rectangle;
+import static org.opencv.core.Core.split;
 
 
 public class MainActivity extends ActionBarActivity implements CvCameraViewListener2{
     private CameraBridgeViewBase mOpenCvCameraView;
     int option = 0;
-    int class_list_index = 0;
-    int faces_needed = 0;
-    private ArrayList<String> classes = new ArrayList(0);
-    private int absoluteFaceSize;
-    private File                   mCascadeFile;
-    private CascadeClassifier cascadeClassifier;
+    int Heart_rate;
+    //int class_list_index = 0;
+    //int faces_needed = 0;
+    private Rect forehead_box;
+    private boolean record = false;
+    private ArrayList<Float> red_array = new ArrayList(0);
+    private ArrayList<Float> blue_array = new ArrayList(0);
+    private ArrayList<Float> green_array = new ArrayList(0);
+    private rgbSig rgbSignals = new rgbSig();
+
+    //private int absoluteFaceSize;
+    //private File                   mCascadeFile;
+    //private CascadeClassifier cascadeClassifier;
+    //public native double extractHR(float* rsig, float* gsig, float* bsig, int nbsamples, double fs);
+    private native int getSignalsFromNative(rgbSig obj);
+
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
         public void onManagerConnected(int status) {
@@ -74,8 +90,8 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
     private View.OnClickListener trainbtnlistener = new View.OnClickListener(){
 
         public void onClick(View v){
-
-        faces_needed = 16;
+        record = true;
+        //faces_needed = 16;
 
         }
 
@@ -95,13 +111,20 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
+
+        String libName = "libndk_heartrate.so"; // the module name of the library, without .so
+        System.loadLibrary(libName);
+
+        // Size and loc of forehead box
+        forehead_box = new Rect(250, 75, 200, 125);
+        //
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.OpenCVView);
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
 
         mOpenCvCameraView.setCvCameraViewListener(this);
-        File cascadeDir = getDir("cascade", Context.MODE_PRIVATE);
-        mCascadeFile = new File(cascadeDir, "lbpcascade_frontalface.xml");
-        cascadeClassifier = new CascadeClassifier(mCascadeFile.getAbsolutePath());
+        //File cascadeDir = getDir("cascade", Context.MODE_PRIVATE);
+        //mCascadeFile = new File(cascadeDir, "lbpcascade_frontalface.xml");
+        //cascadeClassifier = new CascadeClassifier(mCascadeFile.getAbsolutePath());
 
 
 //        current_frame = new Mat();
@@ -109,7 +132,7 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
 
         Button trainbtn = (Button)findViewById(R.id.training);
         Button testbtn = (Button)findViewById(R.id.testing);
-        EditText class_name = (EditText)findViewById(R.id.class_name);
+        //EditText class_name = (EditText)findViewById(R.id.class_name);
 
         trainbtn.setOnClickListener(trainbtnlistener);
         testbtn.setOnClickListener(testbtnlistener);
@@ -134,94 +157,55 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
 
 
         // The faces will be a 20% of the height of the screen
-        absoluteFaceSize = (int) (height * 0.2);
+        //absoluteFaceSize = (int) (height * 0.2);
     }
 
     public void onCameraViewStopped() {
     }
 
-    public Mat captureImages(Mat aInputFrame) {
-        //Hardcode 128,128 image size
-        //Pass in path of train images to train and num of images
-        //Pass in path of test images to test and num classes
-        Mat grayscaleImage = null;
-        Imgproc.cvtColor(aInputFrame, grayscaleImage, Imgproc.COLOR_RGBA2RGB);
-
-        MatOfRect current_face = new MatOfRect();
-
-        // Use the classifier to detect faces
-        if (!cascadeClassifier.empty())
-            cascadeClassifier.detectMultiScale(grayscaleImage, current_face);
-
-        // If there are any faces found, draw a rectangle around it
-        Rect[] facesArray = current_face.toArray();
-        Mat face = grayscaleImage.submat(facesArray[0]);
-        /*for (int i = 0; i <facesArray.length; i++)
-            Core.rectangle(aInputFrame, facesArray[i].tl(), facesArray[i].br(), new Scalar(0, 255, 0, 255), 3);
-        */
-        return face;
-    }
-
-
-
-    public void saveToFolder(File file, Mat input){
-        FileOutputStream out = null;
-        try {
-            out = new FileOutputStream(file);
-            Bitmap bmp = Bitmap.createBitmap(input.cols(),  input.rows(),Bitmap.Config.ARGB_8888);
-            Utils.matToBitmap(input,bmp);
-            bmp.compress(Bitmap.CompressFormat.JPEG, 100, out); // bmp is your Bitmap instance
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            try {
-                if (out != null) {
-                    out.close();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
+        Scalar red_mean;
+        Scalar green_mean;
+        Scalar blue_mean;
+        List<Mat> planes = new ArrayList(3);
 
-        // Do signal processing here.
         Mat current_frame = inputFrame.rgba();
-        Mat current_face;
-        if (faces_needed > 0){
-            for(int i=0; i<8; i++){
-                //this finds the face and returns a face matrix
-                current_face = captureImages(current_frame);
-                String file_name = String.format("class_%i/class%i%i", class_list_index, class_list_index, 8 - faces_needed);
-                File fileName = new File(Environment.DIRECTORY_PICTURES, file_name);
-                saveToFolder(fileName, current_face);
-                //now i want to save things to training folder
-            }
-            faces_needed -= 1;
-            if (faces_needed == 0) { // Time to train
-                // 1 -> train
 
-            }
-            //Below is used to blur the image
-            //org.opencv.core.Size s = new Size(10,10);
-            //Imgproc.blur(current_frame, current_frame, s);
-        } else if (option == 2){
-            for(int i=0; i<4; i++) {
-                current_face=captureImages(current_frame);
-                File fileName=new File(Environment.DIRECTORY_PICTURES, "name it some shit");
-                saveToFolder(fileName, current_face);
-            }
-//          want to test
-            //Below does the edge detection
-            Imgproc.cvtColor(current_frame,current_frame,Imgproc.COLOR_RGB2GRAY);
-            Imgproc.Canny(current_frame,current_frame,100,300);
-            Imgproc.cvtColor(current_frame,current_frame,Imgproc.COLOR_GRAY2RGB);
+        Mat fore_head = current_frame.submat(forehead_box);
 
-        } else {
-            // 0 -> normal
-            current_frame = inputFrame.rgba();
+        //Draw Fore head box
+        Point pt1 = forehead_box.tl();
+        Point pt2 = forehead_box.br();
+        Scalar color = new Scalar(255,255,0,0);
+        rectangle(current_frame, pt1, pt2, color);
+
+        //Extract the Channels
+        if (option == 1) {
+            split(fore_head, planes);
+            red_mean = mean(planes.get(0));
+            green_mean = mean(planes.get(1));
+            blue_mean = mean(planes.get(2));
+            red_array.add((float) red_mean.val[0]);
+            green_array.add((float) green_mean.val[0]);
+            blue_array.add((float) blue_mean.val[0]);
         }
+
+        if (option == 2) {
+            int len = red_array.size();
+            rgbSignals.rsig = new float[len];
+            rgbSignals.gsig = new float[len];
+            rgbSignals.bsig = new float[len];
+            for (int i = 0; i < len; i++) {
+                rgbSignals.rsig[i] = red_array.get(i);
+                rgbSignals.gsig[i] = green_array.get(i);
+                rgbSignals.bsig[i] = blue_array.get(i);
+            }
+            Heart_rate = getSignalsFromNative(rgbSignals);
+            ((android.widget.Button)findViewById(R.id.testing)).setText(Integer.toString(Heart_rate));
+            option = 0;
+        }
+
+
         return current_frame;
     }
 
