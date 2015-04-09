@@ -60,6 +60,9 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
     //public native double extractHR(float* rsig, float* gsig, float* bsig, int nbsamples, double fs);
     private native int getSignalsFromNative(rgbSig obj);
 
+
+
+
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
         public void onManagerConnected(int status) {
@@ -90,18 +93,17 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
     private View.OnClickListener trainbtnlistener = new View.OnClickListener(){
 
         public void onClick(View v){
-        record = true;
-        //faces_needed = 16;
-
+            red_array = new ArrayList(0);
+            blue_array = new ArrayList(0);
+            green_array = new ArrayList(0);
+            option = 1;
         }
 
     };
     private View.OnClickListener testbtnlistener = new View.OnClickListener(){
 
         public void onClick(View v){
-
             option = 2;
-
         }
 
     };
@@ -112,7 +114,7 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
 
-        String libName = "libndk_heartrate.so"; // the module name of the library, without .so
+        String libName = "ndk_heartrate"; // the module name of the library, without .so
         System.loadLibrary(libName);
 
         // Size and loc of forehead box
@@ -200,8 +202,17 @@ public class MainActivity extends ActionBarActivity implements CvCameraViewListe
                 rgbSignals.gsig[i] = green_array.get(i);
                 rgbSignals.bsig[i] = blue_array.get(i);
             }
-            Heart_rate = getSignalsFromNative(rgbSignals);
-            ((android.widget.Button)findViewById(R.id.testing)).setText(Integer.toString(Heart_rate));
+            rgbSignals.fps = 15;
+            if (len > 50)
+                Heart_rate = getSignalsFromNative(rgbSignals);
+            else
+                Heart_rate = 0;
+
+            MainActivity.this.runOnUiThread(new Runnable() {
+                public void run() {
+                    ((android.widget.Button)findViewById(R.id.testing)).setText(Integer.toString(Heart_rate));
+                }
+            });
             option = 0;
         }
 
